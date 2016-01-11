@@ -66,32 +66,38 @@
          (map #(array-map :name (second %) :size (last %)))
          (json/write-str))))
 
-(defn process-page [id]
-  (let [url (gen-topic-url id)
-        resp (client/get url {:headers {"X-Forwarded-For" (rand-ip)}
-                              :throw-exceptions false})
-        body (resp :body)
-        code (resp :status)]
-    (if-let [error (check-error resp)]
-      (do (log/warnf "ID: %s HTTP: %s, %s" id code error)
-          (jdbc/insert! db "error"
-                        {:id id
-                         :code code
-                         :description error}))
-      (let [data {:id id
-                  :team (regsec reg-get-team body)
-                  :author (regsec reg-get-author body)
-                  :name (regsec reg-get-name body)
-                  :magnet (regsec reg-get-magnet body)
-                  :time (regsec reg-get-time body)
-                  :category (regsec reg-get-category body)
-                  :all_size (regsec reg-get-all-size body)
-                  :description (regsec reg-get-description body)
-                  :file_list (->> body
-                                  (regsec reg-get-file-list)
-                                  (parse-file-list))}]
+(defn process-page
+  ([id] (process-page id 1))
+  ([id n]
+   (let [url (gen-topic-url id)
+         resp (client/get url {:headers {"X-Forwarded-For" (rand-ip)}
+                               :throw-exceptions false})
+         body (resp :body)
+         code (resp :status)]
+     (if-let [error (check-error resp)]
+       (if (or (= code 200) (> n 5 ))
+         (do (log/warnf "ID: %s HTTP: %s, %s" id code error)
+             (jdbc/insert! db "error"
+                           {:id id
+                            :code code
+                            :description error}))
+         (do (log/warnf "ID: %s HTTP: %s, will retry in 5 sec. %s" id code error)
+             (Thread/sleep 5000)
+             (process-page id (+ n 1))))
+       (let [data {:id id
+                   :team (regsec reg-get-team body)
+                   :author (regsec reg-get-author body)
+                   :name (regsec reg-get-name body)
+                   :magnet (regsec reg-get-magnet body)
+                   :time (regsec reg-get-time body)
+                   :category (regsec reg-get-category body)
+                   :all_size (regsec reg-get-all-size body)
+                   :description (regsec reg-get-description body)
+                   :file_list (->> body
+                                   (regsec reg-get-file-list)
+                                   (parse-file-list))}]
         (log/infof "ID: %s TITLE: %s" id (data :name))
-        (jdbc/insert! db "data" data)))))
+        (jdbc/insert! db "data" data))))))
 
 (defn parse-int [s]
    (Integer. (re-find  #"\d+" s )))

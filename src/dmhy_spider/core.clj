@@ -56,7 +56,7 @@
 (def reg-get-time #"發佈時間: [^>]*>([^<>]{1,}?)<")
 (def reg-get-category #"所屬分類: [\w\W]{0,}?<font[^>]*>([^<>]{1,}?)<\/font>")
 (def reg-get-all-size #"文件大小: [^>]*>([^<>]{1,}?)<")
-(def reg-get-description #"(?:topic-nfo|topic-info)[^>]*>\n*([\W\w]{1,}?)<\/div>\n?.*description-end")
+(def reg-get-description #"簡介:[^>]*>(?:<br ?\/>)?([\W\w]{1,}?)<\/div>\n?.*description-end")
 (def reg-get-file-list #"class=\"file_list\">([\w\W]{1,}?)<\/div")
 (def reg-get-file-info #"<li>[^>]*>([^<>]{1,}?)\s*<[^>]*>([^<>]{1,}?)<")
 

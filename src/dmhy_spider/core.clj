@@ -43,11 +43,19 @@
 
 (defn regsec [re s] (second (re-find re s)))
 
+(defn http-get [url]
+  (try (client/get url {:headers {"X-Forwarded-For" (rand-ip)}
+                        :throw-exceptions false})
+       (catch Exception e
+         {:status 0 :exception e})))
+
 (defn check-error [resp]
-  (if-let [err (regsec reg-find-err (resp :body))]
-    err
-    (when (not= (resp :status) 200)
-      (resp :body))))
+  (if-let [e (resp :exception)]
+    (.getMessage e)
+    (if-let [err (regsec reg-find-err (resp :body))]
+      err
+      (when (not= (resp :status) 200)
+        (resp :body)))))
 
 (def reg-get-team #"所屬發佈組：[^>]*>([^<>]{1,}?)<")
 (def reg-get-author #"發佈人：[^>]*>([^<>]{1,}?)<")
@@ -70,17 +78,20 @@
   ([id] (process-page id 1))
   ([id n]
    (let [url (gen-topic-url id)
-         resp (client/get url {:headers {"X-Forwarded-For" (rand-ip)}
-                               :throw-exceptions false})
+         resp (http-get url)
          body (resp :body)
          code (resp :status)]
      (if-let [error (check-error resp)]
-       (if (or (= code 200) (> n 5 ))
-         (do (log/warnf "ID: %s HTTP: %s, %s" id code error)
+       (if (or (= code 200) (= code 404) (> n 5 ))
+         ; 出现意料内的错误，或者意料外错误已经出现五次
+         (do (when (= code 0) ; 说明已经重试过五次，而且是网络错误
+               (throw (Exception. (format "Network Error: %s"  error))))
+             (log/warnf "ID: %s HTTP: %s, %s" id code error)
              (jdbc/insert! db "error"
                            {:id id
                             :code code
                             :description error}))
+         ; 出现网络或者意料外的 HTTP 错误，重试
          (do (log/warnf "ID: %s HTTP: %s, will retry in 5 sec. %s" id code error)
              (Thread/sleep 5000)
              (process-page id (+ n 1))))
